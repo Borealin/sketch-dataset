@@ -1,3 +1,4 @@
+# encoding: utf-8
 import asyncio
 import glob
 import json
@@ -15,6 +16,9 @@ from sewar.full_ref import mse
 from tqdm import tqdm
 
 from sketchtool import SketchToolWrapper, WrapperResult, DEFAULT_SKETCH_PATH
+from utils import get_png_size
+
+from threading import Thread
 
 Image.MAX_IMAGE_PIXELS = None
 
@@ -102,35 +106,78 @@ def compare_image(image1: np.ndarray, image2: np.ndarray) -> bool:
     return res < 500
 
 
-def merge_artboard_group(output_folder: str) -> List[List[str]]:
+def merge_artboard_group(output_folder: str, max_thread=8) -> List[List[str]]:
     sketch_folders = glob.glob(f"{output_folder}/*{path.sep}")
-    artboards: List[Tuple[str, int, int]] = [
-        (artboard_path, *(get_image(artboard_path).shape[:2]))
-        for sketch_folder in tqdm(sketch_folders)
-        for artboard_path in glob.glob(f"{sketch_folder}/*")
-    ]
+    artboards: List[Tuple[str, int, int]] = []
+    for sketch_folder in tqdm(sketch_folders):
+        for artboard_path in glob.glob(f"{sketch_folder}/*"):
+            image_size = get_png_size(artboard_path)
+            artboards.append((artboard_path, image_size[0], image_size[1]))
+    print(f"{len(artboards)} artboards found")
     size_groups: Dict[Tuple[int, int], List[str]] = {}
     for artboard_path, width, height in artboards:
         size_groups.setdefault((width, height), []).append(artboard_path)
+    print(f"{len(size_groups)} size groups found")
+    size_groups = {
+        key: value
+        for key, value in size_groups.items()
+        if len(value) > 1
+    }
+    print(f"{len(size_groups)} size groups with more than 1 artboard found")
+    size_groups = {
+        key: value
+        for key, value in size_groups.items()
+        if 100 < key[0] and key[0] <= 1000 and 100 < key[1] and key[1] <= 10000
+    }
+    print(f"{len(size_groups)} size groups with width and height between 100 and 1000 found")
+    image_group_queue = Queue()
+    input_artboard_queue = Queue()
+    pbar = tqdm(total=sum([len(x) for x in size_groups.values()]))
+    for size, image_paths in size_groups.items():
+        input_artboard_queue.put(image_paths)
+    for _ in range(max_thread):
+        thread = MergeArtboardGroupThread(image_group_queue, input_artboard_queue, pbar)
+        thread.daemon = True
+        thread.start()
+    input_artboard_queue.join()
     image_groups: List[List[str]] = []
-    for (width, height), artboard_path_list in tqdm(size_groups.items()):
-        sub_image_groups: List[List[str]] = []
-        for artboard in artboard_path_list:
-            image = get_image(artboard)
-            match = False
-            for group in sub_image_groups:
-                if compare_image(image, get_image(group[0])):
-                    group.append(artboard)
-                    match = True
-                    break
-            if not match:
-                sub_image_groups.append([artboard])
-        image_groups.extend(sub_image_groups)
+    while not image_group_queue.empty():
+        image_groups.append(image_group_queue.get())
+        image_group_queue.task_done()
     return image_groups
 
 
+class MergeArtboardGroupThread(Thread):
+    def __init__(self, image_groups_queue: Queue[List[str]], input_artboard_list_queue: Queue[List[str]], pbar: tqdm):
+        super().__init__()
+        self.image_groups_queue = image_groups_queue
+        self.input_artboard_list_queue = input_artboard_list_queue
+        self.pbar = pbar
+
+    def run(self):
+        while True:
+            if self.input_artboard_list_queue.empty():
+                break
+            artboard_list = self.input_artboard_list_queue.get()
+            sub_image_groups = []
+            for artboard in artboard_list:
+                image = get_image(artboard)
+                match = False
+                for group in sub_image_groups:
+                    if compare_image(image, get_image(group[0])):
+                        group.append(artboard)
+                        match = True
+                        break
+                if not match:
+                    sub_image_groups.append([artboard])
+                self.pbar.update(1)
+            for group in sub_image_groups:
+                self.image_groups_queue.put(group)
+            self.input_artboard_list_queue.task_done()
+
+
 if __name__ == "__main__":
-    output_folder = "output"
+    output_folder = "F:\dataset\sim_output"
     sim_folder = "sim"
     sim_groups_json = path.join(sim_folder, "sim_groups.json")
     path.isdir(output_folder) or makedirs(output_folder, exist_ok=True)
@@ -144,7 +191,7 @@ if __name__ == "__main__":
         list(
             filter(
                 lambda x: len(x) > 1,
-                merge_artboard_group(output_folder)
+                merge_artboard_group(output_folder, 12)
             )
         ),
         open(sim_groups_json, 'w')
