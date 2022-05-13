@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "sketch-dataset"
+version = "0.1.0"
+description = ""
+repository = "https://github.com/Borealin/sketch-dataset"
+authors = ["Borealin <shichuning@gmail.com>"]
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = ">=3.9,<3.11"
+sketch-document-py = "^1.0.2"
+tqdm = "^4.64.0"
+Pillow = "^9.1.0"
+numpy = "^1.22.3"
+sewar = "^0.4.5"
+scipy = "^1.8.0"
+
+[tool.poetry.dev-dependencies]
+pytest = "^7.1.2"
+mypy = "^0.950"
+poethepoet = "^0.13.1"
+sketch-document-py = { path = "../sketch-document-py/", develop = true }
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
