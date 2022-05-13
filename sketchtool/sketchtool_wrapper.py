@@ -1,8 +1,11 @@
 import re
+from dataclasses import dataclass, field
+from json import JSONDecodeError
 from os import path
 from typing import List, Union, Optional, TypeVar, Dict, Generic
-from dataclasses import dataclass, field
+
 from fastclasses_json import dataclass_json, JSONMixin
+
 from .sketchtool import SketchTool, ExportFormat, BackgroundColor
 
 WrapperResultValue = TypeVar("WrapperResultValue")
@@ -57,6 +60,9 @@ class ListLayer(JSONMixin):
     @classmethod
     def from_json(cls, json_data: Union[str, bytes], *, infer_missing=True) -> "ListLayer":
         pass
+
+    def flatten(self) -> List["ListLayer"]:
+        return [nest_layer for layer in self.layers for nest_layer in layer.flatten()] if len(self.layers) > 0 else [self]
 
 
 @dataclass_json
@@ -208,9 +214,9 @@ class SketchToolWrapper:
                 formats: List[ExportFormat] = (ExportFormat.PNG,),
                 items: List[str] = (),
                 scales: List[Union[int, float]] = (1,),
-                save_for_web: bool = False,
-                overwriting: bool = False,
-                trimmed: bool = False,
+                save_for_web: Optional[bool] = None,
+                overwriting: Optional[bool] = None,
+                trimmed: Optional[bool] = None,
                 group_contents_only: Optional[bool] = None,
                 background: Optional[BackgroundColor] = None,
                 suffixing: Optional[bool] = None,
@@ -230,7 +236,7 @@ class SketchToolWrapper:
                 suffixing=suffixing,
             )
             stdout, stderr = await process.communicate()
-            return SketchToolWrapper.Export.handle_stdio(
+            return self.handle_stdio(
                 output=output,
                 items=items,
                 formats=formats,
@@ -245,9 +251,9 @@ class SketchToolWrapper:
                 formats: List[ExportFormat] = (ExportFormat.PNG,),
                 items: List[str] = (),
                 scales: List[Union[int, float]] = (1,),
-                save_for_web: bool = False,
-                overwriting: bool = False,
-                trimmed: bool = False,
+                save_for_web: Optional[bool] = None,
+                overwriting: Optional[bool] = None,
+                trimmed: Optional[bool] = None,
                 group_contents_only: Optional[bool] = None,
                 include_symbols: Optional[bool] = None,
                 export_page_as_fallback: Optional[bool] = None,
@@ -263,12 +269,13 @@ class SketchToolWrapper:
                 overwriting=overwriting,
                 trimmed=trimmed,
                 group_contents_only=group_contents_only,
+                use_id_for_name=True,
                 include_symbols=include_symbols,
                 export_page_as_fallback=export_page_as_fallback,
                 serial=serial,
             )
             stdout, stderr = await process.communicate()
-            return SketchToolWrapper.Export.handle_stdio(
+            return self.handle_stdio(
                 output=output,
                 items=items,
                 formats=formats,
@@ -280,36 +287,47 @@ class SketchToolWrapper:
         def __init__(self, sketchtool: SketchTool):
             self.sketchtool = sketchtool
 
+        @classmethod
+        def process_layer_stdout(cls, stdout: str) -> WrapperResult[ListLayersResult]:
+            try:
+                list_layer_result = ListLayersResult.from_json(stdout)
+            except JSONDecodeError:
+                list_layer_result = ListLayersResult([])
+            return WrapperResult(
+                value=list_layer_result,
+                stdout=stdout,
+            )
+
         async def layers(self, document: str) -> WrapperResult[ListLayersResult]:
             process = await self.sketchtool.list.layers(document)
             stdout, stderr = await process.communicate()
             stdout = stdout.decode("utf-8")
             stderr = stderr.decode("utf-8")
-            try:
-                list_layer_result = ListLayersResult.from_json(stdout)
-            except ValueError:
-                list_layer_result = ListLayersResult([])
-            result = WrapperResult(
-                value=list_layer_result,
-                stdout=stdout
-            )
+            result = self.process_layer_stdout(stdout)
             if stderr:
                 result.stderr = stderr
             return result
+
+        @classmethod
+        def process_artboard_stdout(cls, stdout: str) -> WrapperResult[ListArtboardsResult]:
+            try:
+                list_artboard_result = ListArtboardsResult.from_json(stdout)
+            except JSONDecodeError:
+                list_artboard_result = ListArtboardsResult([])
+            return WrapperResult(
+                value=list_artboard_result,
+                stdout=stdout,
+            )
 
         async def artboards(self, document: str) -> WrapperResult[ListArtboardsResult]:
             process = await self.sketchtool.list.artboards(document)
             stdout, stderr = await process.communicate()
             stdout = stdout.decode("utf-8")
             stderr = stderr.decode("utf-8")
-            try:
-                list_artboards_result = ListArtboardsResult.from_json(stdout)
-            except ValueError:
-                list_artboards_result = ListArtboardsResult([])
-            result = WrapperResult(
-                value=list_artboards_result,
-                stdout=stdout
-            )
+            result = self.process_artboard_stdout(stdout)
             if stderr:
                 result.stderr = stderr
             return result
+
+
+__all__ = ["SketchToolWrapper", "WrapperResult", "ListArtboardsResult", "ListLayersResult"]

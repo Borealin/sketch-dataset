@@ -75,9 +75,9 @@ class SketchTool:
                 use_id_for_name: Optional[bool] = None,
                 suffixing: Optional[bool] = None,
         ) -> Process:
-            cmd = f"export layers {document}"
+            cmd = f"export layers \"{document}\""
             args = [
-                ("output", output, lambda x: x),
+                ("output", output, lambda x: f"\"{x}\""),
                 ("formats", formats, lambda x: ",".join([f.value for f in x])),
                 ("items", items, lambda x: ",".join(x)),
                 ("item", item, lambda x: x),
@@ -114,9 +114,9 @@ class SketchTool:
                 export_page_as_fallback: Optional[bool] = None,
                 serial: Optional[bool] = None,
         ) -> Process:
-            cmd = f"export artboards {document}"
+            cmd = f"export artboards \"{document}\""
             args: List[Tuple[str, Any, Callable[[Any], str]]] = [
-                ("output", output, lambda x: x),
+                ("output", output, lambda x: f"\"{x}\""),
                 ("formats", formats, lambda x: ",".join([f.value for f in x])),
                 ("items", items, lambda x: ",".join(x)),
                 ("item", item, lambda x: x),
@@ -140,9 +140,12 @@ class SketchTool:
             self.sketchtool = sketchtool
 
         async def layers(self, document: str) -> Process:
-            cmd = f"list layers {document}"
+            cmd = f"list layers \"{document}\""
             return await self.sketchtool.execute(cmd)
 
         async def artboards(self, document: str) -> Process:
-            cmd = f"list artboards {document}"
+            cmd = f"list artboards \"{document}\""
             return await self.sketchtool.execute(cmd)
+
+
+__all__ = ["BackgroundColor", "BackgroundColorEnum", "ExportFormat", "SketchTool"]
