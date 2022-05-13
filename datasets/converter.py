@@ -163,7 +163,6 @@ def process(
         thread.daemon = True
         thread.start()
     sketch_queue.join()
-    error_message_queue.join()
     if not error_message_queue.empty():
         with open(error_message_file, "w") as f:
             for sketch_path, e in error_message_queue.queue:
