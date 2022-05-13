@@ -1,3 +1,4 @@
+import re
 from typing import List
 
 from sketch_document_py import sketch_file as sf
@@ -31,3 +32,14 @@ def extract_artboards_from_sketch(sketch_file: sf.SketchFile) -> List[sff.Artboa
         for layer in page.layers
         if isinstance(layer, sff.Artboard)
     ]
+
+
+def get_missing_font(error_file: str) -> List[str]:
+    missing_fonts = set()
+    with open(error_file, "r") as f:
+        lines = f.readlines()
+        for line in lines:
+            match = re.match(r".+Client requested name \"(((?!\").)+)\"", line)
+            if match:
+                missing_fonts.add(match.group(1))
+    return list(sorted(missing_fonts))

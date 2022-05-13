@@ -179,7 +179,7 @@ class SketchToolWrapper:
         ) -> WrapperResult[Dict[str, List[bool]]]:
             stdout = stdout.decode("utf-8")
             stderr = stderr.decode("utf-8")
-            lines = stdout.strip().split("\n")
+            lines = stdout.strip().splitlines()
             item_map_format = {
                 item: [None] * len(formats)
                 for item in items
