@@ -188,19 +188,6 @@ python-versions = ">=3.8,<3.11"
 numpy = ">=1.17.3,<1.25.0"
 
 [[package]]
-name = "sewar"
-version = "0.4.5"
-description = "All image quality metrics you need in one package."
-category = "main"
-optional = false
-python-versions = "*"
-
-[package.dependencies]
-numpy = "*"
-Pillow = "*"
-scipy = "*"
-
-[[package]]
 name = "sketch-document-py"
 version = "1.0.2"
 description = "This project contains the APIs to work with Sketch documents and document elements in Python dataclass."
@@ -252,7 +239,7 @@ python-versions = ">=3.7"
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.9,<3.11"
-content-hash = "841bddfa2e51e99001a1a793e344b204335e0fd195c730e78acd9be02bfa0023"
+content-hash = "4ef9c457f4313103be90d9b048f1fe43e89946e36c27ed805282c330b3656f3b"
 
 [metadata.files]
 atomicwrites = [
@@ -418,9 +405,6 @@ scipy = [
     {file = "scipy-1.8.0-cp39-cp39-win32.whl", hash = "sha256:3d573228c10a3a8c32b9037be982e6440e411b443a6267b067cac72f690b8d56"},
     {file = "scipy-1.8.0-cp39-cp39-win_amd64.whl", hash = "sha256:bb7088e89cd751acf66195d2f00cf009a1ea113f3019664032d9075b1e727b6c"},
     {file = "scipy-1.8.0.tar.gz", hash = "sha256:31d4f2d6b724bc9a98e527b5849b8a7e589bf1ea630c33aa563eda912c9ff0bd"},
-]
-sewar = [
-    {file = "sewar-0.4.5.tar.gz", hash = "sha256:a80c160dccca15505d0d9138d5d13b97c23879a62cfe4e60bb986f98d1a67098"},
 ]
 sketch-document-py = []
 tomli = [
