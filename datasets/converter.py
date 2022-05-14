@@ -1,12 +1,10 @@
 import asyncio
-import glob
 import logging
 from os import path, makedirs
 from pathlib import Path
 from queue import Queue
 from shutil import move
-
-from typing import List, Tuple, Dict
+from typing import List, Dict
 
 from sketch_document_py.sketch_file import from_file, to_file
 from tqdm import tqdm
@@ -15,6 +13,8 @@ from sketchtool import SketchToolWrapper, DEFAULT_SKETCH_PATH, ExportFormat
 from utils import extract_artboards_from_sketch, ProfileLoggingThread
 
 ITEM_THRESHOLD = 1000
+
+
 async def convert_sketch(
         sketch_path: str,
         output_folder: str,
@@ -139,7 +139,8 @@ def convert_sketch_sync(
         logger: logging.Logger = None
 ):
     return asyncio.run(
-        convert_sketch(sketch_path, output_path, shrink_sketch_name, artboard_json_name, artboard_export_image_name, logger))
+        convert_sketch(sketch_path, output_path, shrink_sketch_name, artboard_json_name, artboard_export_image_name,
+                       logger))
 
 
 class ConvertSketchThread(ProfileLoggingThread):
@@ -184,7 +185,7 @@ class ConvertSketchThread(ProfileLoggingThread):
                 self.sketch_queue.task_done()
 
 
-def process(
+def convert(
         sketch_list: List[str],
         output_folder: str,
         shrink_sketch_name: str,
@@ -216,16 +217,4 @@ def process(
     sketch_queue.join()
 
 
-if __name__ == "__main__":
-    output_path = "./converted"
-    shrink_sketch_name = "main.sketch"
-    artboard_json_name = "main.json"
-    artboard_export_image_name = "main.png"
-    process(
-        glob.glob("/Users/bytedance/Documents/school/dataset/first_labeled/*.sketch"),
-        output_path,
-        shrink_sketch_name,
-        artboard_json_name,
-        artboard_export_image_name,
-        8
-    )
+__all__ = ['convert']

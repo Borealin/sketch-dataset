@@ -81,3 +81,8 @@ def export_artboards(
         thread.daemon = True
         thread.start()
     sketch_queue.join()
+
+
+__all__ = [
+    "export_artboards"
+]

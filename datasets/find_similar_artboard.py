@@ -143,3 +143,9 @@ def visualize_groups(image_groups: List[List[str]], output_folder: str):
         for i, image in enumerate(group_images):
             new_image.paste(image, (i * image.size[0], 0))
         new_image.save(f"{output_folder}/{group_idx}.png")
+
+
+__all__ = [
+    "merge_artboard_group",
+    "visualize_groups"
+]
