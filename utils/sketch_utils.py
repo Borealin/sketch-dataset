@@ -1,5 +1,5 @@
 import re
-from typing import List
+from typing import List, Dict, Set
 
 from sketch_document_py import sketch_file as sf
 from sketch_document_py import sketch_file_format as sff
@@ -34,12 +34,17 @@ def extract_artboards_from_sketch(sketch_file: sf.SketchFile) -> List[sff.Artboa
     ]
 
 
-def get_missing_font(error_file: str) -> List[str]:
-    missing_fonts = set()
+def get_missing_font(error_file: str) -> Dict[str, Set[str]]:
+    missing_fonts = {}
     with open(error_file, "r") as f:
         lines = f.readlines()
+        current_sketch_file = None
         for line in lines:
-            match = re.match(r".+Client requested name \"(((?!\").)+)\"", line)
-            if match:
-                missing_fonts.add(match.group(1))
-    return list(sorted(missing_fonts))
+            sketch_name = re.match(r".+convert (.+\.sketch)", line)
+            if sketch_name:
+                current_sketch_file = sketch_name.group(1)
+                continue
+            missing_font_match = re.match(r".+Client requested name \"(((?!\").)+)\".+", line)
+            if missing_font_match:
+                missing_fonts.setdefault(missing_font_match.group(1), set()).add(current_sketch_file)
+    return missing_fonts
