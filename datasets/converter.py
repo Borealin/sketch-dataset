@@ -4,12 +4,13 @@ from os import path, makedirs
 from pathlib import Path
 from queue import Queue
 from shutil import move
-from typing import List, Dict
+from typing import List, Dict, Optional
 
+from PIL import Image
 from sketch_document_py.sketch_file import from_file, to_file
 from tqdm import tqdm
 
-from sketchtool import SketchToolWrapper, DEFAULT_SKETCH_PATH, ExportFormat
+from sketchtool import SketchToolWrapper, DEFAULT_SKETCH_PATH, ExportFormat, ListLayer
 from utils import extract_artboards_from_sketch, ProfileLoggingThread
 
 ITEM_THRESHOLD = 1000
@@ -217,4 +218,35 @@ def convert(
     sketch_queue.join()
 
 
-__all__ = ['convert']
+def draw_artboard(
+        artboard_folder: str,
+        artboard_json_name: str,
+        output_image_path: str,
+        artboard_export_image_name: Optional[str] = None
+):
+    artboard = ListLayer.from_json(open(path.join(artboard_folder, artboard_json_name), 'r').read())
+
+    def dfs(layer: ListLayer, root: ListLayer, canvas: Image.Image) -> Image.Image:
+        if len(layer.layers) > 0:
+            for child in layer.layers:
+                dfs(child, root, canvas)
+        else:
+            layer_image_path = path.join(artboard_folder, f"{layer.id}.png")
+            if path.exists(layer_image_path):
+                image = Image.open(layer_image_path).convert("RGBA")
+                canvas.alpha_composite(image, (
+                    int(layer.trimmed.x - artboard.trimmed.x), int(layer.trimmed.y - artboard.trimmed.y)))
+        return canvas
+
+    res = dfs(artboard, artboard,
+              Image.new("RGBA", (int(artboard.rect.width), int(artboard.rect.height)), (255, 255, 255, 255)))
+    # res.save(output_image_path)
+    if artboard_export_image_name is not None:
+        real_res = Image.open(path.join(artboard_folder, artboard_export_image_name)).convert("RGBA")
+        compare = Image.new("RGBA", (res.width * 2, res.height), (255, 255, 255, 255))
+        compare.paste(res, (0, 0))
+        compare.paste(real_res, (res.width, 0))
+        compare.show()
+
+
+__all__ = ['convert', 'draw_artboard']
