@@ -6,28 +6,6 @@ from os import path
 from datasets import convert
 from utils import create_folder
 
-
-def main(base_folder: str):
-    output_path = path.join(base_folder, "converted")
-    shrink_sketch_name = "main.sketch"
-    artboard_json_name = "main.json"
-    artboard_export_image_name = "main.png"
-    logfile_folder = path.join(output_path, "logging")
-    profile_folder = path.join(output_path, "profile")
-    for folder in [output_path, logfile_folder, profile_folder]:
-        create_folder(folder)
-    convert(
-        glob.glob(path.join(base_folder, "sketches/*.sketch")),
-        output_path,
-        shrink_sketch_name,
-        artboard_json_name,
-        artboard_export_image_name,
-        logfile_folder,
-        profile_folder,
-        8
-    )
-
-
 @dataclass
 class ConvertNameSpace:
     input: str = ""
