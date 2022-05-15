@@ -221,8 +221,8 @@ def convert(
 def draw_artboard(
         artboard_folder: str,
         artboard_json_name: str,
-        output_image_path: str,
-        artboard_export_image_name: Optional[str] = None
+        artboard_export_image_name: Optional[str] = None,
+        output_image_path: Optional[str] = None,
 ):
     artboard = ListLayer.from_json(open(path.join(artboard_folder, artboard_json_name), 'r').read())
 
@@ -240,7 +240,8 @@ def draw_artboard(
 
     res = dfs(artboard, artboard,
               Image.new("RGBA", (int(artboard.rect.width), int(artboard.rect.height)), (255, 255, 255, 255)))
-    # res.save(output_image_path)
+    if output_image_path is not None:
+        res.save(output_image_path)
     if artboard_export_image_name is not None:
         real_res = Image.open(path.join(artboard_folder, artboard_export_image_name)).convert("RGBA")
         compare = Image.new("RGBA", (res.width * 2, res.height), (255, 255, 255, 255))
