@@ -3,8 +3,8 @@ import glob
 from dataclasses import dataclass
 from os import path
 
-from datasets import convert
-from utils import create_folder
+from sketch_dataset.datasets import convert
+from sketch_dataset.utils import create_folder
 
 parser = argparse.ArgumentParser(
     description='Convert sketches in folder to dataset format',

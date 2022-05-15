@@ -11,7 +11,7 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 
-from utils import get_png_size, ProfileLoggingThread
+from sketch_dataset.utils import get_png_size, ProfileLoggingThread
 
 Image.MAX_IMAGE_PIXELS = None
 MIN_WIDTH = 200

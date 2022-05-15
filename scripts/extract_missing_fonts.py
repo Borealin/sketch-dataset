@@ -1,7 +1,7 @@
 import glob
 from os import path
 import argparse
-from utils import get_missing_font
+from sketch_dataset.utils import get_missing_font
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Extract missing fonts from a logging folder')

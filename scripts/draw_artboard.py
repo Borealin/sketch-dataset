@@ -1,4 +1,4 @@
-from datasets.converter import draw_artboard
+from sketch_dataset.datasets.converter import draw_artboard
 import argparse
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

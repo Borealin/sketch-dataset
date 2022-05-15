@@ -1,10 +1,9 @@
-import glob
 import json
 import logging
 from os import path
 
-from datasets import merge_artboard_group, visualize_groups, export_artboards, find_similar_sketch
-from utils import create_folder
+from sketch_dataset.datasets import find_similar_sketch
+from sketch_dataset.utils import create_folder
 
 if __name__ == "__main__":
 

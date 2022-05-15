@@ -7,8 +7,8 @@ from typing import List, Dict
 
 from tqdm import tqdm
 
-from sketchtool import SketchToolWrapper, DEFAULT_SKETCH_PATH, WrapperResult
-from utils import ProfileLoggingThread
+from sketch_dataset.sketchtool import SketchToolWrapper, DEFAULT_SKETCH_PATH, WrapperResult
+from sketch_dataset.utils import ProfileLoggingThread
 
 
 async def generate_artboards_png(sketch_path: str, output: str) -> WrapperResult[Dict[str, List[bool]]]:

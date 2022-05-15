@@ -10,8 +10,8 @@ from PIL import Image
 from sketch_document_py.sketch_file import from_file, to_file
 from tqdm import tqdm
 
-from sketchtool import SketchToolWrapper, DEFAULT_SKETCH_PATH, ExportFormat, ListLayer
-from utils import extract_artboards_from_sketch, ProfileLoggingThread
+from sketch_dataset.sketchtool import SketchToolWrapper, DEFAULT_SKETCH_PATH, ExportFormat, ListLayer
+from sketch_dataset.utils import extract_artboards_from_sketch, ProfileLoggingThread
 
 ITEM_THRESHOLD = 1000
 
