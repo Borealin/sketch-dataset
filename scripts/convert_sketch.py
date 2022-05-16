@@ -3,7 +3,7 @@ import glob
 from dataclasses import dataclass
 from os import path
 
-from sketch_dataset.datasets import convert
+from sketch_dataset.datasets import convert, ConvertedSketchConfig
 from sketch_dataset.utils import create_folder
 
 parser = argparse.ArgumentParser(
@@ -16,6 +16,8 @@ parser.add_argument('--shrunk_sketch', type=str, help='Name of shrunk sketch fil
 parser.add_argument('--artboard_json', type=str, help='Name of artboard json file contains layers bbox structure',
                     default="main.json")
 parser.add_argument('--artboard_image', type=str, help='Name of exported artboard image file', default="main.png")
+parser.add_argument('--config_file', type=int, help='File store sketch_name, artboard_json, artboard_image',
+                    default="config.json")
 parser.add_argument('--logfile_folder', type=str, help='Folder to save log files', default="{output}/logging")
 parser.add_argument('--profile_folder', type=str, help='Folder to save profile files', default="{output}/profile")
 parser.add_argument('--threads', type=int, help='Number of threads to use', default=8)
@@ -28,6 +30,7 @@ class ConvertNameSpace:
     shrunk_sketch: str = parser.get_default('shrunk_sketch')
     artboard_json: str = parser.get_default('artboard_json')
     artboard_image: str = parser.get_default('artboard_image')
+    config_file: str = parser.get_default('config_file')
     logfile_folder: str = ""
     profile_folder: str = ""
     threads: int = parser.get_default('threads')
@@ -49,10 +52,13 @@ if __name__ == "__main__":
         create_folder(folder)
     convert(
         glob.glob(path.join(args.input, "*.sketch")),
-        args.output,
-        args.shrunk_sketch,
-        args.artboard_json,
-        args.artboard_image,
+        ConvertedSketchConfig(
+            args.shrunk_sketch,
+            args.artboard_json,
+            args.artboard_image,
+            args.config_file,
+            args.output
+        ),
         args.logfile_folder,
         args.profile_folder,
         args.threads
