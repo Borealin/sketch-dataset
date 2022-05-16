@@ -176,7 +176,7 @@ class SketchToolWrapper:
                 formats: List[ExportFormat],
                 stdout: bytes,
                 stderr: bytes,
-        ) -> WrapperResult[Dict[str, List[bool]]]:
+        ) -> WrapperResult[Dict[str, List[str]]]:
             stdout = stdout.decode("utf-8")
             stderr = stderr.decode("utf-8")
             lines = stdout.strip().splitlines()
@@ -220,7 +220,7 @@ class SketchToolWrapper:
                 group_contents_only: Optional[bool] = None,
                 background: Optional[BackgroundColor] = None,
                 suffixing: Optional[bool] = None,
-        ) -> WrapperResult[Dict[str, List[bool]]]:
+        ) -> WrapperResult[Dict[str, List[str]]]:
             process = await self.sketchtool.export.layers(
                 document=document,
                 output=output,
@@ -258,7 +258,7 @@ class SketchToolWrapper:
                 include_symbols: Optional[bool] = None,
                 export_page_as_fallback: Optional[bool] = None,
                 serial: Optional[bool] = None
-        ) -> WrapperResult[Dict[str, List[bool]]]:
+        ) -> WrapperResult[Dict[str, List[str]]]:
             process = await self.sketchtool.export.artboards(
                 document=document,
                 output=output,
@@ -330,4 +330,4 @@ class SketchToolWrapper:
             return result
 
 
-__all__ = ["SketchToolWrapper", "WrapperResult", "ListArtboardsResult", "ListLayersResult", "ListLayer"]
+__all__ = ["SketchToolWrapper", "WrapperResult", "ListArtboardsResult", "ListLayersResult", "ListLayer", "BBox"]

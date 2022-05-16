@@ -1,15 +1,17 @@
 import asyncio
 import logging
+import traceback
 from dataclasses import dataclass
+from functools import reduce
 from os import path, makedirs
 from pathlib import Path
 from queue import Queue
-from shutil import move
+from shutil import move, rmtree
 from typing import List, Dict, Optional, Any
 
 from PIL import Image
 from fastclasses_json import dataclass_json, JSONMixin
-from sketch_document_py.sketch_file import from_file, to_file
+from sketch_document_py.sketch_file import from_file, to_file, SketchFile
 from tqdm import tqdm
 
 from sketch_dataset.datasets.extend_sketch_file_format import ExtendArtboard
@@ -28,6 +30,13 @@ class ConvertedSketchConfig(JSONMixin):
     artboard_image: str
     config_file: str
     output_dir: str
+    sketches: List[str] = ()
+
+
+@dataclass_json
+@dataclass
+class ConvertedSketch(JSONMixin):
+    artboards: List[str] = ()
 
 
 @dataclass
@@ -35,7 +44,7 @@ class ArtboardData:
     artboard_folder: 'Path'
     list_layer: 'ListLayer'
     main_image: 'Path'
-    layer_images: List['Path']
+    layer_images: Dict[str, 'Path']
 
 
 @dataclass
@@ -55,19 +64,30 @@ class Dataset:
         config = ConvertedSketchConfig.from_json(open(config_path).read())
 
 
-def recursive_merge(dict1: Dict[str, Any], dict2: Dict[str, Any], keys: List[str]):
+def recursive_merge(dict1: Dict[str, Any], dict2: Dict[str, Any], keys: List[str], strict: bool = False):
     result = {**dict1, **dict2}
     for key in keys:
         if key in dict1 and key in dict2:
             if isinstance(dict1[key], dict) and isinstance(dict2[key], dict):
-                result[key] = recursive_merge(dict1[key], dict2[key], keys)
+                result[key] = recursive_merge(dict1[key], dict2[key], keys, strict)
+            elif isinstance(dict1[key], list) and isinstance(dict2[key], list):
+                new_value = []
+                if strict:
+                    assert len(dict1[key]) == len(dict2[key])
+                for value1, value2 in zip(dict1[key], dict2[key]):
+                    if isinstance(value1, dict) and isinstance(value2, dict):
+                        new_value.append(recursive_merge(value1, value2, keys, strict))
+                    else:
+                        new_value.append((value1, value2))
+                result[key] = new_value
     return result
 
 
 async def convert_sketch(
         sketch_path: str,
         convert_config: ConvertedSketchConfig,
-        logger: logging.Logger = None
+        logger: logging.Logger = None,
+        strict: bool = True
 ):
     """
     Convert a sketch file to dataset.
@@ -102,88 +122,105 @@ async def convert_sketch(
     """
     sketch_output_folder = path.join(convert_config.output_dir, Path(sketch_path).stem)
     path.isdir(sketch_output_folder) or makedirs(sketch_output_folder, exist_ok=True)
-    shrink_sketch_path = path.join(sketch_output_folder, convert_config.sketch_name)
+    shrink_sketch_path = path.join(sketch_output_folder, convert_config.sketch_file)
 
-    # save shrunk sketch
-    sketch_file = from_file(sketch_path)
-    to_file(sketch_file, shrink_sketch_path)
+    try:
+        # save shrunk sketch
+        sketch_file: SketchFile
+        sketch_file = from_file(sketch_path)
+        to_file(sketch_file, shrink_sketch_path)
 
-    # init sketchtool
-    sketchtool = SketchToolWrapper(DEFAULT_SKETCH_PATH)
+        # init sketchtool
+        sketchtool = SketchToolWrapper(DEFAULT_SKETCH_PATH)
 
-    # read list layers
-    list_layers_coroutine = sketchtool.list.layers(sketch_path)
-    list_layers_coroutine_res = await list_layers_coroutine
-    if list_layers_coroutine_res.stderr and logger:
-        logger.error(f'convert {sketch_path} failed when list layers: ')
-        logger.error(list_layers_coroutine_res.stderr)
-    first_level_layer_dict: Dict[str, ListLayer] = {
-        layer.id: layer
-        for page in list_layers_coroutine_res.value.pages
-        for layer in page.layers
-    }
+        # read list layers
+        list_layers_coroutine = sketchtool.list.layers(sketch_path)
+        list_layers_coroutine_res = await list_layers_coroutine
+        if list_layers_coroutine_res.stderr and logger:
+            logger.warning(f'convert {sketch_path} failed when list layers: ')
+            logger.warning(list_layers_coroutine_res.stderr)
+        first_level_layer_dict: Dict[str, ListLayer] = {
+            layer.id: layer
+            for page in list_layers_coroutine_res.value.pages
+            for layer in page.layers
+        }
 
-    # export artboard main image
-    artboard_dict: Dict[str, ExtendArtboard] = {
-        artboard.do_objectID: ExtendArtboard.from_dict(
-            recursive_merge(
-                artboard.to_dict(),
-                first_level_layer_dict[artboard.do_objectID].to_dict(),
-                ['layers']
-            )
-        )
-        for artboard in extract_artboards_from_sketch(sketch_file)
-    }
-    export_format = ExportFormat.PNG
-    export_artboards_coroutine = sketchtool.export.artboards(
-        sketch_path,
-        output=sketch_output_folder,
-        formats=[export_format],
-        items=artboard_dict.keys()
-    )
-    export_artboards_coroutine_res = await export_artboards_coroutine
-    if export_artboards_coroutine_res.stderr and logger:
-        logger.error(f'convert {sketch_path} failed when export artboards: ')
-        logger.error(export_artboards_coroutine_res.stderr)
-    export_result: Dict[str, bool] = {k: v[0] for k, v in export_artboards_coroutine_res.value.items()}
-
-    export_layers_coroutines = []
-    for artboard_id, artboard_export_status in export_result.items():
-        if artboard_export_status:
-            # make artboard dir
-            artboard_output_folder = path.join(sketch_output_folder, artboard_id)
-            path.isdir(artboard_output_folder) or makedirs(artboard_output_folder, exist_ok=True)
-
-            # get artboard json
-            artboard_json = first_level_layer_dict[artboard_id]
-
-            # get all layer id in artboard
-            items = [layer.id for layer in artboard_json.flatten()]
-
-            # export artboard layers
-            for i in range(int(len(items) / ITEM_THRESHOLD) + 1):
-                export_layers_coroutine = sketchtool.export.layers(
-                    sketch_path,
-                    output=artboard_output_folder,
-                    formats=[export_format],
-                    items=items[i * ITEM_THRESHOLD: (i + 1) * ITEM_THRESHOLD],
+        # export artboard main image
+        artboard_dict: Dict[str, ExtendArtboard] = {
+            artboard.do_objectID: ExtendArtboard.from_dict(
+                recursive_merge(
+                    artboard.to_dict(),
+                    first_level_layer_dict[artboard.do_objectID].to_dict(),
+                    ['layers']
                 )
-                export_layers_coroutines.append(export_layers_coroutine)
+            )
+            for artboard in extract_artboards_from_sketch(sketch_file)
+        }
 
-            # write artboard json
-            artboard_json_path = path.join(artboard_output_folder, convert_config.artboard_json)
-            with open(artboard_json_path, "w") as layer_json:
-                layer_json.write(artboard_json.to_json())
+        export_format = ExportFormat.PNG
+        export_artboards_coroutine = sketchtool.export.artboards(
+            sketch_path,
+            output=sketch_output_folder,
+            formats=[export_format],
+            items=artboard_dict.keys()
+        )
+        export_artboards_coroutine_res = await export_artboards_coroutine
+        if export_artboards_coroutine_res.stderr and logger:
+            logger.warning(f'convert {sketch_path} failed when export artboards: ')
+            logger.warning(export_artboards_coroutine_res.stderr)
+        export_result: Dict[str, str] = {k: v[0] for k, v in export_artboards_coroutine_res.value.items()}
 
-            # write artboard image
-            artboard_image_path = path.join(artboard_output_folder, convert_config.artboard_image)
-            move(path.join(sketch_output_folder, f"{artboard_id}.{export_format.value}"), artboard_image_path)
+        export_layers_coroutines = []
+        for artboard_id, artboard_export_path in export_result.items():
+            if artboard_export_path:
+                # make artboard dir
+                artboard_output_folder = path.join(sketch_output_folder, artboard_id)
+                path.isdir(artboard_output_folder) or makedirs(artboard_output_folder, exist_ok=True)
 
-    for export_layers_coroutine in export_layers_coroutines:
-        export_layers_coroutine_res = await export_layers_coroutine
-        if export_layers_coroutine_res.stderr and logger:
-            logger.error(f'convert {sketch_path} failed when export layers: ')
-            logger.error(export_layers_coroutine_res.stderr)
+                # get artboard json
+                artboard_json = artboard_dict[artboard_id]
+
+                # get all layer id in artboard
+                items = [layer.id for layer in artboard_json.flatten()]
+
+                # export artboard layers
+                for i in range(int(len(items) / ITEM_THRESHOLD) + 1):
+                    export_layers_coroutine = sketchtool.export.layers(
+                        sketch_path,
+                        output=artboard_output_folder,
+                        formats=[export_format],
+                        items=items[i * ITEM_THRESHOLD: (i + 1) * ITEM_THRESHOLD],
+                    )
+                    export_layers_coroutines.append(export_layers_coroutine)
+
+                # write artboard json
+                artboard_json_path = path.join(artboard_output_folder, convert_config.artboard_json)
+                with open(artboard_json_path, "w") as layer_json:
+                    layer_json.write(artboard_json.to_json())
+
+                # write artboard image
+                artboard_image_path = path.join(artboard_output_folder, convert_config.artboard_image)
+                move(artboard_export_path, artboard_image_path)
+            else:
+                if strict:
+                    raise Exception(f'export artboard {artboard_id} failed')
+        for export_layers_coroutine in export_layers_coroutines:
+            export_layers_coroutine_res = await export_layers_coroutine
+            if export_layers_coroutine_res.stderr and logger:
+                logger.warning(f'convert {sketch_path} failed when export layers: ')
+                logger.warning(export_layers_coroutine_res.stderr)
+            if strict:
+                if not reduce(
+                        lambda x, y: x and y,
+                        export_layers_coroutine_res.value.values(),
+                        True
+                ):
+                    raise Exception(f'export layers failed')
+        with open(path.join(sketch_output_folder, convert_config.sketch_json), "w") as sketch_json:
+            sketch_json.write(ConvertedSketch(list(export_result.keys())).to_json())
+    except Exception as e:
+        rmtree(sketch_output_folder)
+        raise e
 
 
 def convert_sketch_sync(
@@ -199,6 +236,7 @@ class ConvertSketchThread(ProfileLoggingThread):
     def __init__(
             self,
             sketch_queue: Queue[str],
+            result_queue: Queue[str],
             convert_config: ConvertedSketchConfig,
             thread_name: str,
             logfile_path: str,
@@ -207,6 +245,7 @@ class ConvertSketchThread(ProfileLoggingThread):
     ):
         super().__init__(thread_name, logfile_path, profile_path)
         self.sketch_queue = sketch_queue
+        self.result_queue = result_queue
         self.convert_config = convert_config
         self.pbar = pbar
 
@@ -221,8 +260,9 @@ class ConvertSketchThread(ProfileLoggingThread):
                     self.convert_config,
                     self.logger
                 )
+                self.result_queue.put(sketch_path)
             except Exception as e:
-                self.logger.error(f"{sketch_path} {e}")
+                self.logger.error(f"encounter exception when converting {sketch_path}: \n{traceback.format_exc()}")
             finally:
                 self.pbar.update()
                 self.sketch_queue.task_done()
@@ -237,12 +277,14 @@ def convert(
 ):
     pbar = tqdm(total=len(sketch_list))
     sketch_queue: Queue[str] = Queue()
+    result_queue: Queue[str] = Queue()
     for sketch_path in sketch_list:
         sketch_queue.put(sketch_path)
     for i in range(max_threads):
         thread_name = f"convert-thread-{i}"
         thread = ConvertSketchThread(
             sketch_queue,
+            result_queue,
             convert_config,
             thread_name,
             path.join(logfile_folder, f"{thread_name}.log"),
@@ -252,6 +294,7 @@ def convert(
         thread.daemon = True
         thread.start()
     sketch_queue.join()
+    convert_config.sketches = tuple(result_queue.queue)
     with open(path.join(convert_config.output_dir, convert_config.config_file), "w") as f:
         f.write(convert_config.to_json())
 

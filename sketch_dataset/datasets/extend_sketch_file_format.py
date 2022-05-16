@@ -37,7 +37,6 @@ ExtendAnyLayer = Union[
 class _ExtendAnyGroupBase(JSONMixin):
     layers: List[ExtendAnyLayer] = field(
         metadata={'fastclasses_json': {'decoder': lambda lst: [to_object(x) for x in lst if x is not None]}},
-        default=()
     )
 
 
