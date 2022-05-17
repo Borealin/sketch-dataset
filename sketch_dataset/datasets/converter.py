@@ -7,12 +7,13 @@ from os import path, makedirs
 from pathlib import Path
 from queue import Queue
 from shutil import move, rmtree
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Generic, TypeVar, Type
 
 from PIL import Image
 from fastclasses_json import dataclass_json, JSONMixin
 from sketch_document_py.sketch_file import from_file, to_file, SketchFile
 from tqdm import tqdm
+from tqdm.contrib.concurrent import thread_map
 
 from sketch_dataset.datasets.extend_sketch_file_format import ExtendArtboard
 from sketch_dataset.sketchtool import SketchToolWrapper, DEFAULT_SKETCH_PATH, ExportFormat, ListLayer
@@ -39,29 +40,63 @@ class ConvertedSketch(JSONMixin):
     artboards: List[str] = ()
 
 
+T = TypeVar('T', bound='ListLayer')
+
+
 @dataclass
-class ArtboardData:
+class ArtboardData(Generic[T]):
     artboard_folder: 'Path'
-    list_layer: 'ListLayer'
+    list_layer: 'T'
     main_image: 'Path'
     layer_images: Dict[str, 'Path']
 
 
 @dataclass
-class SketchData:
+class SketchData(Generic[T]):
     sketch_folder: 'Path'
     sketch_path: 'Path'
-    artboards: List['ArtboardData']
+    artboards: List['ArtboardData[T]']
 
 
 @dataclass
-class Dataset:
+class Dataset(Generic[T]):
     config: 'ConvertedSketchConfig'
-    sketches: List['SketchData']
+    sketches: List['SketchData[T]']
 
     @classmethod
-    def from_config(cls, config_path: str):
-        config = ConvertedSketchConfig.from_json(open(config_path).read())
+    def from_config(cls, config_path: str, list_layer_type: Type[T]) -> 'Dataset[T]':
+        config_parent = Path(config_path).parent
+        config: ConvertedSketchConfig = ConvertedSketchConfig.from_json(open(config_path).read())
+        config.output_dir = str(config_parent)
+
+        def read_sketch(sketch: str) -> SketchData:
+            sketch_folder = config_parent.joinpath(sketch)
+            sketch_path = sketch_folder.joinpath(config.sketch_file)
+            artboards = []
+            sketch_json: ConvertedSketch = ConvertedSketch.from_json(
+                open(sketch_folder.joinpath(config.sketch_json)).read())
+            for artboard in sketch_json.artboards:
+                artboard_folder = sketch_folder.joinpath(artboard)
+                list_layer: T = list_layer_type.from_json(
+                    open(artboard_folder.joinpath(config.artboard_json)).read())
+                flatten_layer = list_layer.flatten()
+                artboards.append(ArtboardData(
+                    artboard_folder=artboard_folder,
+                    list_layer=list_layer,
+                    main_image=artboard_folder.joinpath(config.artboard_image),
+                    layer_images={
+                        layer.id: artboard_folder.joinpath(f"{layer.id}.png")
+                        for layer in flatten_layer
+                    }
+                ))
+            return SketchData(
+                sketch_folder=sketch_folder,
+                sketch_path=sketch_path,
+                artboards=artboards
+            )
+
+        sketches = thread_map(read_sketch, config.sketches)
+        return cls(config=config, sketches=sketches)
 
 
 def recursive_merge(dict1: Dict[str, Any], dict2: Dict[str, Any], keys: List[str], strict: bool = False):
@@ -88,7 +123,7 @@ async def convert_sketch(
         convert_config: ConvertedSketchConfig,
         logger: logging.Logger = None,
         strict: bool = True
-):
+) -> str:
     """
     Convert a sketch file to dataset.
 
@@ -221,13 +256,14 @@ async def convert_sketch(
     except Exception as e:
         rmtree(sketch_output_folder)
         raise e
+    return Path(sketch_path).stem
 
 
 def convert_sketch_sync(
         sketch_path: str,
         convert_config: ConvertedSketchConfig,
         logger: logging.Logger = None
-):
+) -> str:
     return asyncio.run(
         convert_sketch(sketch_path, convert_config, logger))
 
@@ -255,12 +291,11 @@ class ConvertSketchThread(ProfileLoggingThread):
                 break
             sketch_path = self.sketch_queue.get()
             try:
-                convert_sketch_sync(
+                self.result_queue.put(convert_sketch_sync(
                     sketch_path,
                     self.convert_config,
                     self.logger
-                )
-                self.result_queue.put(sketch_path)
+                ))
             except Exception as e:
                 self.logger.error(f"encounter exception when converting {sketch_path}: \n{traceback.format_exc()}")
             finally:
@@ -294,6 +329,7 @@ def convert(
         thread.daemon = True
         thread.start()
     sketch_queue.join()
+    convert_config.output_dir = "."
     convert_config.sketches = tuple(result_queue.queue)
     with open(path.join(convert_config.output_dir, convert_config.config_file), "w") as f:
         f.write(convert_config.to_json())
@@ -316,7 +352,7 @@ def draw_artboard(
             if path.exists(layer_image_path):
                 image = Image.open(layer_image_path).convert("RGBA")
                 canvas.alpha_composite(image, (
-                    int(layer.trimmed.x - artboard.trimmed.x), int(layer.trimmed.y - artboard.trimmed.y)))
+                    int(layer.trimmed.x - root.trimmed.x), int(layer.trimmed.y - root.trimmed.y)))
         return canvas
 
     res = dfs(artboard, artboard,
@@ -331,4 +367,4 @@ def draw_artboard(
         compare.show()
 
 
-__all__ = ['convert', 'draw_artboard', 'ConvertedSketchConfig']
+__all__ = ['convert', 'draw_artboard', 'ConvertedSketchConfig', 'Dataset', 'ArtboardData']

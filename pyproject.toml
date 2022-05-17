@@ -12,7 +12,6 @@ sketch-document-py = "^1.0.4"
 tqdm = "^4.64.0"
 Pillow = "^9.1.0"
 numpy = "^1.22.3"
-scipy = "^1.8.0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^7.1.2"
