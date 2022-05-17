@@ -12,6 +12,7 @@ from typing import List, Dict, Optional, Any, Generic, TypeVar, Type
 from PIL import Image
 from fastclasses_json import dataclass_json, JSONMixin
 from sketch_document_py.sketch_file import from_file, to_file, SketchFile
+from tqdm import tqdm
 from tqdm.contrib.concurrent import thread_map
 
 from sketch_dataset.datasets.extend_sketch_file_format import ExtendArtboard

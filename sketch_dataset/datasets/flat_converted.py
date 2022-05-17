@@ -1,8 +1,7 @@
 import json
-import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Union, Tuple, Dict
+from typing import List, Optional, Union, Tuple, Dict, Callable
 
 from PIL import Image
 from fastclasses_json import dataclass_json
@@ -11,6 +10,7 @@ from tqdm.contrib.concurrent import thread_map
 
 from sketch_dataset.datasets import Dataset, ArtboardData
 from sketch_dataset.sketchtool.sketchtool_wrapper import ListLayer
+from sketch_dataset.utils import get_png_size
 
 
 @dataclass_json
@@ -104,11 +104,20 @@ def draw_artboard_with_label(artboard: ArtboardData[ExtendClassAndColorListLayer
     compare.show()
 
 
-def convert_from_config(config_path: str, output_path: str, assets_image_size: Tuple[int, int]) -> None:
+def convert_from_config(
+        config_path: str,
+        output_path: str,
+        assets_image_size: Tuple[int, int],
+        artboard_filter: Callable[[ArtboardData[ExtendClassAndStyleListLayer]], bool] = lambda x: 200 < get_png_size(
+            x.main_image)[0] < 4000 and 200 < get_png_size(x.main_image)[1] < 8000
+) -> None:
     output_path = Path(output_path)
     dataset: Dataset[ExtendClassAndStyleListLayer] = Dataset.from_config(config_path, ExtendClassAndStyleListLayer)
     flatten_artboards = [
-        artboard for sketch in dataset.sketches for artboard in sketch.artboards
+        artboard
+        for sketch in dataset.sketches
+        for artboard in sketch.artboards
+        if artboard_filter(artboard)
     ]
 
     def convert_artboard(input_data: Tuple[int, ArtboardData[ExtendClassAndStyleListLayer]]) -> Dict[str, str]:
@@ -144,7 +153,7 @@ def convert_from_config(config_path: str, output_path: str, assets_image_size: T
             assest_image.paste(
                 Image.open(artboard.layer_images[layer.id]).convert("RGBA").resize(assets_image_size),
                 (0, index * assets_image_size[1]))
-        json.dump([layer.to_json() for layer in flatten_layers], open(output_path.joinpath(json_name), "w"))
+        json.dump([layer.to_dict() for layer in flatten_layers], open(output_path.joinpath(json_name), "w"))
         Image.open(artboard.main_image).convert("RGBA").save(output_path.joinpath(image_name))
         assest_image.save(output_path.joinpath(layerassets))
         return {
@@ -153,5 +162,5 @@ def convert_from_config(config_path: str, output_path: str, assets_image_size: T
             "layerassets": layerassets,
         }
 
-    index_lst = thread_map(convert_artboard, enumerate(flatten_artboards), max_workers=16)
+    index_lst = thread_map(convert_artboard, list(enumerate(flatten_artboards)), max_workers=16)
     json.dump(index_lst, open(output_path.joinpath("index.json"), "w"))
