@@ -44,11 +44,21 @@ class BBox(JSONMixin):
 
 @dataclass_json
 @dataclass
-class ListLayer(JSONMixin):
+class BaseListLayer(JSONMixin):
     id: str
     name: str
-    layers: List["ListLayer"]
+    layers: List["BaseListLayer"]
     rect: BBox
+
+    def flatten(self) -> List["BaseListLayer"]:
+        return [nest_layer for layer in self.layers for nest_layer in layer.flatten()] if len(self.layers) > 0 else [
+            self]
+
+
+@dataclass_json
+@dataclass
+class ListLayer(BaseListLayer):
+    layers: List["ListLayer"]
     trimmed: BBox
     relative: BBox
     influence: BBox
@@ -62,7 +72,7 @@ class ListLayer(JSONMixin):
         pass
 
     def flatten(self) -> List["ListLayer"]:
-        return [nest_layer for layer in self.layers for nest_layer in layer.flatten()] if len(self.layers) > 0 else [self]
+        return super().flatten()
 
 
 @dataclass_json
