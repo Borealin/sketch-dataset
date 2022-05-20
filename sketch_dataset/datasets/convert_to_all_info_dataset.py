@@ -7,9 +7,8 @@ from os import path, makedirs
 from pathlib import Path
 from queue import Queue
 from shutil import move, rmtree
-from typing import List, Dict, Optional, Any, Generic, TypeVar, Type
+from typing import List, Dict, Any, Generic, TypeVar, Type
 
-from PIL import Image
 from fastclasses_json import dataclass_json, JSONMixin
 from sketch_document_py.sketch_file import from_file, to_file, SketchFile
 from tqdm import tqdm
@@ -45,6 +44,7 @@ T = TypeVar('T', bound='ListLayer')
 
 @dataclass
 class ArtboardData(Generic[T]):
+    sketch_folder: 'Path'
     artboard_folder: 'Path'
     list_layer: 'T'
     main_image: 'Path'
@@ -81,6 +81,7 @@ class Dataset(Generic[T]):
                     open(artboard_folder.joinpath(config.artboard_json)).read())
                 flatten_layer = list_layer.flatten()
                 artboards.append(ArtboardData(
+                    sketch_folder=sketch_folder,
                     artboard_folder=artboard_folder,
                     list_layer=list_layer,
                     main_image=artboard_folder.joinpath(config.artboard_image),
@@ -95,7 +96,7 @@ class Dataset(Generic[T]):
                 artboards=artboards
             )
 
-        sketches = thread_map(read_sketch, config.sketches)
+        sketches = thread_map(read_sketch, config.sketches, max_workers=12, desc="Reading Sketch")
         return cls(config=config, sketches=sketches)
 
 
@@ -335,36 +336,4 @@ def convert(
         f.write(convert_config.to_json())
 
 
-def draw_artboard(
-        artboard_folder: str,
-        artboard_json_name: str,
-        artboard_export_image_name: Optional[str] = None,
-        output_image_path: Optional[str] = None,
-):
-    artboard = ListLayer.from_json(open(path.join(artboard_folder, artboard_json_name), 'r').read())
-
-    def dfs(layer: ListLayer, root: ListLayer, canvas: Image.Image) -> Image.Image:
-        if len(layer.layers) > 0:
-            for child in layer.layers:
-                dfs(child, root, canvas)
-        else:
-            layer_image_path = path.join(artboard_folder, f"{layer.id}.png")
-            if path.exists(layer_image_path):
-                image = Image.open(layer_image_path).convert("RGBA")
-                canvas.alpha_composite(image, (
-                    int(layer.trimmed.x - root.trimmed.x), int(layer.trimmed.y - root.trimmed.y)))
-        return canvas
-
-    res = dfs(artboard, artboard,
-              Image.new("RGBA", (int(artboard.rect.width), int(artboard.rect.height)), (255, 255, 255, 255)))
-    if output_image_path is not None:
-        res.save(output_image_path)
-    if artboard_export_image_name is not None:
-        real_res = Image.open(path.join(artboard_folder, artboard_export_image_name)).convert("RGBA")
-        compare = Image.new("RGBA", (res.width * 2, res.height), (255, 255, 255, 255))
-        compare.paste(res, (0, 0))
-        compare.paste(real_res, (res.width, 0))
-        compare.show()
-
-
-__all__ = ['convert', 'draw_artboard', 'ConvertedSketchConfig', 'Dataset', 'ArtboardData']
+__all__ = ['convert', 'ConvertedSketchConfig', 'Dataset', 'ArtboardData']

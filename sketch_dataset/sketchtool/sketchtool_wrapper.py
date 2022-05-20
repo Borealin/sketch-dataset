@@ -340,4 +340,5 @@ class SketchToolWrapper:
             return result
 
 
-__all__ = ["SketchToolWrapper", "WrapperResult", "ListArtboardsResult", "ListLayersResult", "ListLayer", "BBox"]
+__all__ = ["SketchToolWrapper", "WrapperResult", "ListArtboardsResult", "ListLayersResult", "ListLayer",
+           "BaseListLayer", "BBox"]

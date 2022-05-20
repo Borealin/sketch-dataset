@@ -1,11 +1,12 @@
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Union, Tuple, Dict, Callable, Any
+from typing import List, Optional, Union, Tuple, Dict, Callable
 
 from PIL import Image
 from fastclasses_json import dataclass_json
 from sketch_document_py import sketch_file_format as sff
+from tqdm import tqdm
 from tqdm.contrib.concurrent import thread_map
 
 from sketch_dataset.datasets import Dataset, ArtboardData
@@ -80,35 +81,6 @@ def name_to_label(name: str) -> int:
     return 1 if name.startswith("#merge#") else 0
 
 
-def draw_artboard_with_label(artboard: ArtboardData[ExtendForWriteListLayer]):
-    artboard_root = artboard.list_layer
-
-    def dfs(layer: ExtendForWriteListLayer, root: ExtendForWriteListLayer,
-            canvas: Image.Image) -> Image.Image:
-        if len(layer.layers) > 0:
-            for child in layer.layers:
-                dfs(child, root, canvas)
-        else:
-            bbox = layer.trimmed
-            bbox.x = bbox.x - root.trimmed.x
-            bbox.y = bbox.y - root.trimmed.y
-            image = Image.open(artboard.layer_images[layer.id]).convert("RGBA")
-            canvas.alpha_composite(image, (
-                int(bbox.x), int(bbox.y)))
-            if layer.label == 1:
-                canvas.alpha_composite(Image.new(canvas.mode, (int(bbox.width), int(bbox.height)), (255, 0, 0, 127)), (
-                    int(bbox.x), int(bbox.y)))
-        return canvas
-
-    new_image = Image.new("RGBA", (int(artboard_root.rect.width), int(artboard_root.rect.height)), (255, 255, 255, 255))
-    res = dfs(artboard_root, artboard_root, new_image)
-    real_res = Image.open(artboard.main_image).convert("RGBA")
-    compare = Image.new("RGBA", (res.width * 2, res.height), (255, 255, 255, 255))
-    compare.paste(res, (0, 0))
-    compare.paste(real_res, (res.width, 0))
-    compare.show()
-
-
 def default_artboard_filter(artboard: ArtboardData[ExtendForWriteListLayer]) -> bool:
     width_match = 200 < get_png_size(artboard.main_image)[0] < 2000
     height_match = 400 < get_png_size(artboard.main_image)[1] < 4000
@@ -141,7 +113,7 @@ def convert_from_config(
     print(f"Found {len(flatten_artboards)} artboards")
     flatten_artboards = [
         artboard
-        for artboard in flatten_artboards
+        for artboard in tqdm(flatten_artboards, desc="Filtering artboards")
         if artboard_filter(artboard)
     ]
     print(f"Remain {len(flatten_artboards)} artboards after filtered")
@@ -156,12 +128,20 @@ def convert_from_config(
             label: int
             first: bool
 
-        def update_label(list_layer: ExtendForWriteListLayer, context: Context) -> None:
+        def update_label(list_layer: ExtendForWriteListLayer, context: Context, override_label=False) -> None:
             if len(list_layer.layers) > 0:
+                changed = False
+                old_label = context.label
                 label = name_to_label(list_layer.name)
-                context = Context(label, True)
+                if label > 0 and not override_label:
+                    context.label = label
+                    context.first = True
+                    changed = True
                 for nest_layer in list_layer.layers:
-                    update_label(nest_layer, context)
+                    update_label(nest_layer, context, override_label or changed)
+                if changed:
+                    context.label = old_label
+                    context.first = True
             else:
                 if context.first:
                     list_layer.label = context.label * 2
@@ -170,10 +150,6 @@ def convert_from_config(
                     list_layer.label = context.label * 2 + 1
 
         update_label(for_write_root, Context(0, True))
-
-        # new_artboard: ArtboardData[ExtendClassAndColorListLayer] = copy.copy(artboard)
-        # new_artboard.list_layer = for_write_root
-        # draw_artboard_with_label(new_artboard)
 
         flatten_layers = [layer_bbox_transform(layer, for_write_root) for layer in for_write_root.flatten()]
         json_name = f"{index}.json"
@@ -204,10 +180,12 @@ def convert_from_config(
         Image.open(artboard.main_image).convert("RGBA").save(output_path.joinpath(image_name))
         assest_image.save(output_path.joinpath(layerassets))
         return {
+            "sketch": artboard.sketch_folder.stem,
             "json": json_name,
             "image": image_name,
             "layerassets": layerassets,
         }
 
-    index_lst = thread_map(convert_artboard, list(enumerate(flatten_artboards)), max_workers=16)
+    index_lst = thread_map(convert_artboard, list(enumerate(flatten_artboards)), max_workers=12,
+                           desc="Converting artboards")
     json.dump(index_lst, open(output_path.joinpath("index.json"), "w"))
