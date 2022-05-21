@@ -1,7 +1,7 @@
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Union, Tuple, Dict, Callable
+from typing import List, Optional, Union, Tuple, Dict, Callable, Any
 
 from PIL import Image
 from fastclasses_json import dataclass_json
