@@ -81,6 +81,55 @@ def name_to_label(name: str) -> int:
     return 1 if name.startswith("#merge#") else 0
 
 
+@dataclass
+class Context:
+    label: int
+    first: bool
+
+
+def update_label_old(list_layer: ExtendForWriteListLayer, context: Context) -> None:
+    if len(list_layer.layers) > 0:
+        label = name_to_label(list_layer.name)
+        context = Context(label, True)
+        for nest_layer in list_layer.layers:
+            update_label_old(nest_layer, context)
+    else:
+        if context.first:
+            list_layer.label = context.label * 2
+            context.first = False
+        else:
+            list_layer.label = context.label * 2 + 1
+
+
+def update_label_new(list_layer: ExtendForWriteListLayer, context: Context, override_label=False) -> None:
+    if len(list_layer.layers) > 0:
+        changed = False
+        old_label = context.label
+        label = name_to_label(list_layer.name)
+        if label > 0 and not override_label:
+            context.label = label
+            context.first = True
+            changed = True
+        for nest_layer in list_layer.layers:
+            update_label_new(nest_layer, context, override_label or changed)
+        if changed:
+            context.label = old_label
+            context.first = True
+    else:
+        if context.first:
+            list_layer.label = context.label * 2
+            context.first = False
+        else:
+            list_layer.label = context.label * 2 + 1
+
+
+def update_label(list_layer: ExtendForWriteListLayer, use_new: bool = False) -> None:
+    if use_new:
+        update_label_new(list_layer, Context(0, True))
+    else:
+        update_label_old(list_layer, Context(0, True))
+
+
 def default_artboard_filter(artboard: ArtboardData[ExtendForWriteListLayer]) -> bool:
     width_match = 200 < get_png_size(artboard.main_image)[0] < 2000
     height_match = 400 < get_png_size(artboard.main_image)[1] < 4000
@@ -123,33 +172,7 @@ def convert_from_config(
         for_read_root = artboard.list_layer
         for_write_root: ExtendForWriteListLayer = ExtendForWriteListLayer.from_for_read_list_layer(for_read_root)
 
-        @dataclass
-        class Context:
-            label: int
-            first: bool
-
-        def update_label(list_layer: ExtendForWriteListLayer, context: Context, override_label=False) -> None:
-            if len(list_layer.layers) > 0:
-                changed = False
-                old_label = context.label
-                label = name_to_label(list_layer.name)
-                if label > 0 and not override_label:
-                    context.label = label
-                    context.first = True
-                    changed = True
-                for nest_layer in list_layer.layers:
-                    update_label(nest_layer, context, override_label or changed)
-                if changed:
-                    context.label = old_label
-                    context.first = True
-            else:
-                if context.first:
-                    list_layer.label = context.label * 2
-                    context.first = False
-                else:
-                    list_layer.label = context.label * 2 + 1
-
-        update_label(for_write_root, Context(0, True))
+        update_label(for_write_root)
 
         flatten_layers = [layer_bbox_transform(layer, for_write_root) for layer in for_write_root.flatten()]
         json_name = f"{index}.json"
